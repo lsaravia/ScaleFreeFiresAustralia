@@ -1,0 +1,73 @@
+---
+title: "Save MODIS burned area as CSV"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+## setup
+
+```{r setup, echo=FALSE,message=FALSE,warning=FALSE,fig.align='center',eval=TRUE}
+source("R/functions.r")
+require(raster)
+require(dplyr)
+require(stringr)
+require(spatialwarnings)
+require(future.apply)
+require(tictoc)
+require(readr)
+require(lubridate)
+
+data_path <- "~/Academicos/GitProjects/AustraliaTippingPoint/Data"
+```
+
+
+## Read spatial distributions as sparse matrix
+
+```{r readSparseMatrixAus, echo=T,message=T,warning=T,eval=FALSE}
+
+
+fire_bricks <- list.files(path=data_path,pattern="^BurnedAreaAustralia20.*tif$")
+fire_bricks
+region_name  <- str_match(fire_bricks, "^BurnedArea(.*?)20\\d{2}")[1,2]
+
+plan(multiprocess)
+
+# If file exist add new data to it 
+#
+if(file.exists("Data/patch_sparse_BurnedArea_Australia.rds")) {
+  patch_sparse <- readRDS("Data/patch_sparse_BurnedArea_Australia.rds")
+} else {
+  patch_sparse <- tibble()
+}
+nrow(patch_sparse)
+tic()
+patch_add <- convert_to_sparse(fire_bricks,region_name,data_path)
+toc()
+patch_add <- patch_add %>% mutate(data = as.logical(data))
+
+str(patch_add)
+patch_sparse <- bind_rows(patch_sparse, patch_add)
+
+# Convert "t" to the number of months since the first record, there are months with no fires.
+#
+patch_sparse <- patch_sparse %>% mutate( t = (interval(ymd(patch_sparse$date[1]), ymd(date)) %/% months(1) )+ 1)
+
+saveRDS(patch_sparse,"Data/patch_sparse_BurnedArea_Australia.rds")
+
+
+write_csv(patch_sparse %>% dplyr::select(t,i,j), "Data/patch_sparse_BurnedArea_Australia.csv")
+
+
+#
+# Convert raster footprint to sparse format 
+#
+fire_bricks <- list.files(path=data_path,pattern="^BurnedAreaAustralia_.*tif$")
+fire_bricks
+patch_sparse <- convert_to_sparse(fire_bricks,"Australia",data_path)
+write_csv(patch_sparse %>% select(t,i,j), "Data/patch_region_BurnedArea_Australia.csv")
+
+# Total surface of the Forest Area 2292051 pixels
+#
+```
+
